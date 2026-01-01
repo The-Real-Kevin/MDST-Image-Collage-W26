@@ -154,9 +154,41 @@ This repository contains a 9-week plan to build an image-collage generator (mosa
 
 ---
 
-If you'd like, I can also:
+repo structure below: 
 
-- Add a short usage example and recommended `requirements.txt`.
-- Create starter scripts for data download and preprocessing.
-
-Tell me which next step you want me to do.
+image-collage-generator/
+├── README.md
+├── requirements.txt
+├── main.py                      # CLI entry point
+├── config.yaml                  # Configuration file
+├── src/
+│   ├── __init__.py
+│   ├── categorize_images.py    # Step 2: Source image processing
+│   ├── segment_target.py       # Step 1: Target image division
+│   ├── color_analysis.py       # Color calculations
+│   ├── color_matching.py       # Color distance metrics
+│   ├── match_sections.py       # Step 3: Matching algorithm
+│   ├── render_collage.py       # Final rendering
+│   ├── tile_manager.py         # Large output handling
+│   └── enhancements.py         # Optional features
+├── utils/
+│   ├── __init__.py
+│   ├── image_loader.py         # Image I/O utilities
+│   ├── config.py               # Config management
+│   └── visualize.py            # Debug visualizations
+├── data/
+│   ├── source_images/          # Source image dataset
+│   └── target_images/          # Target images to transform
+├── cache/
+│   └── source_images.json      # Cached categorization
+├── output/
+│   ├── collages/               # Final collages
+│   └── collage_maps/           # Intermediate JSON outputs
+├── tests/
+│   ├── test_categorize.py
+│   ├── test_segment.py
+│   └── test_matching.py
+├── examples/
+│   └── sample_outputs/         # Demo results
+└── notebooks/
+    └── demo.ipynb              # Interactive demo
