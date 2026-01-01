@@ -1,1 +1,21 @@
-#config file
+# Image Collage Generator Configuration
+
+# Source images
+source_images:
+  directory: "data/source_images"
+  supported_formats: [".jpg", ".jpeg", ".png", ".webp"]
+  cache_file: "cache/source_images.json"
+
+# Target images
+target_images:
+  directory: "data/target_images"
+
+# Collage settings
+collage:
+  section_size: [160, 90]  # width, height in pixels
+  output_directory: "output/collages"
+
+# Performance
+performance:
+  use_multiprocessing: false
+  num_workers: 4
