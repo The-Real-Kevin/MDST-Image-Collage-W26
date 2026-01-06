@@ -12,7 +12,9 @@ target_images:
 
 # Collage settings
 collage:
-  section_size: [160, 90]  # width, height in pixels
+  # Grid dimensions (number of segments, not pixel size)
+  grid_segments_x: 40  # Number of columns
+  grid_segments_y: 30  # Number of rows
   output_directory: "output/collages"
 
 # Performance
