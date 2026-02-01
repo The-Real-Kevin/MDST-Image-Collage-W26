@@ -1,19 +1,19 @@
-# Functions needed:
-- euclidean_distance(color1, color2)
-- delta_e_distance(color1, color2)  # More perceptually accurate
-- find_best_match(target_color, source_palette)
-- match_all_sections(target_sections, source_palette)
-
 import os
 from PIL import Image
 import numpy as np
 
+# ----------------------------
+# CONFIG
+# ----------------------------
+
 TARGET_IMAGE_PATH = "data/target_images/example.jpg"       # Your target image
 SAMPLE_FOLDER = "data/source_images"             # Folder with 16 sample images
 OUTPUT_IMAGE_PATH = "mosaic_result.png"
-WEIGHTS = np.array([0.3, 0.59, 0.11], dtype=np.float32)
 
 ROWS, COLS = 40, 40  # grid size of mosaic
+
+# Optional RGB weights (perceptual)
+WEIGHTS = np.array([0.3, 0.59, 0.11], dtype=np.float32)
 
 # ----------------------------
 # Load sample images and compute average colors
@@ -37,10 +37,10 @@ for f in sample_files:
 
 print(f"Loaded {len(sample_data)} sample images.")
 
-
 # ----------------------------
 # Load target image
 # ----------------------------
+
 target_img = Image.open(TARGET_IMAGE_PATH).convert("RGB")
 target_width, target_height = target_img.size
 segment_width = target_width // COLS
@@ -61,3 +61,39 @@ def closest_sample(segment_avg):
         distances.append(dist)
     idx = np.argmin(distances)
     return sample_data[idx]["file"]
+
+# ----------------------------
+# Build mosaic
+# ----------------------------
+
+mosaic = Image.new("RGB", target_img.size)
+
+for row in range(ROWS):
+    for col in range(COLS):
+        left = col * segment_width
+        top = row * segment_height
+        right = left + segment_width
+        bottom = top + segment_height
+
+        # Crop segment from target image
+        segment = target_img.crop((left, top, right, bottom))
+        avg_color = np.array(segment).mean(axis=(0, 1))
+
+        # Find best matching sample image
+        best_match_file = closest_sample(avg_color)
+
+        # Open and resize sample image to fit segment
+        sample_img = Image.open(best_match_file).convert("RGB")
+        sample_resized = sample_img.resize((segment_width, segment_height), Image.BILINEAR)
+
+        # Paste into mosaic
+        mosaic.paste(sample_resized, (left, top))
+
+# ----------------------------
+# Save and show
+# ----------------------------
+
+mosaic.save(OUTPUT_IMAGE_PATH)
+mosaic.show()
+print(f"Mosaic saved → {OUTPUT_IMAGE_PATH}")
+
