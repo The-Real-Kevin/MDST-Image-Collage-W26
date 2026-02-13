@@ -14,12 +14,7 @@ data/target_images/    # Put your target image here
 ## Commands
 
 ### 1. Categorize Source Images
-```bash
-python -m src.categorize_source_images
-```
-- Processes all images in `data/source_images/`
-- Calculates average color for each
-- Saves to `cache/source_images.json`
+
 
 ### 2. Extract Target Colors
 ```bash
