@@ -1,41 +1,64 @@
 # Functions needed:
-- create_canvas(dimensions)
-- place_image(canvas, image, position, size)
-- render_collage(collage_map, source_images)
-- save_output(image, filepath)
-- split_into_tiles(large_collage, tile_size)
+import numpy as np
+from PIL import Image
+from typing import Tuple, List
+from categorize_images import SourceImagePalette, load_palette
+from src.color_matching import find_best_match
 
-# ----------------------------
-# Build mosaic
-# ----------------------------
 
-mosaic = Image.new("RGB", target_img.size)
 
-for row in range(ROWS):
-    for col in range(COLS):
-        left = col * segment_width
-        top = row * segment_height
-        right = left + segment_width
-        bottom = top + segment_height
+from PIL import Image
+import numpy as np
+from categorize_images import SourceImage, SourceImagePalette, categorize_all_images
 
-        # Crop segment from target image
-        segment = target_img.crop((left, top, right, bottom))
-        avg_color = np.array(segment).mean(axis=(0, 1))
 
-        # Find best matching sample image
-        best_match_file = closest_sample(avg_color)
 
-        # Open and resize sample image to fit segment
-        sample_img = Image.open(best_match_file).convert("RGB")
-        sample_resized = sample_img.resize((segment_width, segment_height), Image.BILINEAR)
+def render_collage(target_image: Image.Image,
+                   palette: SourceImagePalette,
+                   tile_size: int = 40,
+                   method: str = "euclidean") -> Image.Image:
 
-        # Paste into mosaic
-        mosaic.paste(sample_resized, (left, top))
+    if len(palette) == 0:
+        raise ValueError("Palette is empty")
 
-# ----------------------------
-# Save and show
-# ----------------------------
+    width, height = target_image.size
 
-mosaic.save(OUTPUT_IMAGE_PATH)
-mosaic.show()
-print(f"Mosaic saved → {OUTPUT_IMAGE_PATH}")
+    # Crop to clean tile grid
+    width = (width // tile_size) * tile_size
+    height = (height // tile_size) * tile_size
+    target_image = target_image.crop((0, 0, width, height))
+
+    mosaic = Image.new("RGB", (width, height))
+
+    for y in range(0, height, tile_size):
+        for x in range(0, width, tile_size):
+
+            tile = target_image.crop((x, y, x + tile_size, y + tile_size))
+            avg_color = tuple(np.array(tile).mean(axis=(0,1)).astype(int))
+
+            # Use your existing matching function
+            best_match = palette.find_closest_match(avg_color)
+
+            # Load image from filepath
+            source_img = Image.open(best_match.filepath).convert("RGB")
+
+            # Resize to tile
+            source_img = source_img.resize(
+                (tile_size, tile_size),
+                Image.Resampling.LANCZOS
+            )
+
+            mosaic.paste(source_img, (x, y))
+
+    return mosaic
+
+palette = categorize_all_images(
+    image_directory="data/source_images",
+    supported_formats=[".jpg", ".jpeg", ".png"]
+)
+print("Loaded images:", len(palette))
+target_image = Image.open("data/target_images/example.jpg").convert("RGB")
+collage = render_collage(target_image, palette, tile_size=40)
+collage.save("collage.jpg")
+
+
