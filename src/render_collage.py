@@ -2,14 +2,10 @@
 import numpy as np
 from PIL import Image
 from typing import Tuple, List
-from categorize_images import SourceImagePalette, load_palette
 from src.color_matching import find_best_match
-
-
-
 from PIL import Image
 import numpy as np
-from categorize_images import SourceImage, SourceImagePalette, categorize_all_images
+from src.categorize_images import SourceImage, SourceImagePalette, categorize_all_images
 
 
 

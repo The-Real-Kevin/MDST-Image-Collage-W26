@@ -1,7 +1,7 @@
 # Functions needed:
 import numpy as np
 from typing import Tuple, List
-from categorize_images import SourceImagePalette
+from src.categorize_images import SourceImagePalette
 
 def euclidean_distance(color1: Tuple[int, int, int],
                        color2: Tuple[int, int, int]) -> float:
