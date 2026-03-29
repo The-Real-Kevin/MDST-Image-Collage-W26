@@ -48,13 +48,14 @@ def render_collage(target_image: Image.Image,
 
     return mosaic
 
-palette = categorize_all_images(
-    image_directory="data/source_images",
-    supported_formats=[".jpg", ".jpeg", ".png"]
-)
-print("Loaded images:", len(palette))
-target_image = Image.open("data/target_images/example.jpg").convert("RGB")
-collage = render_collage(target_image, palette, tile_size=40)
-collage.save("collage.jpg")
+if __name__ == "__main__":
+    palette = categorize_all_images(
+        image_directory="data/source_images",
+        supported_formats=[".jpg", ".jpeg", ".png"]
+    )
+    print("Loaded images:", len(palette))
+    target_image = Image.open("data/target_images/example.jpg").convert("RGB")
+    collage = render_collage(target_image, palette, tile_size=40)
+    collage.save("collage.jpg")
 
 
