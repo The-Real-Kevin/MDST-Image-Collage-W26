@@ -187,12 +187,24 @@ def create_collage(target_image_path: str, palette: SourceImagePalette,
     print(f"\nRendering collage...")
     print(f"  Matching {metadata['total_segments']} segments to source images...")
     print(f"  This may take a moment...\n")
-    
+
+    max_uses = config['collage'].get('max_uses_per_image', None)
+    diversity = float(config['collage'].get('diversity_strength', 0.0))
+    radius = int(config['collage'].get('neighbor_radius', 3))
+
+    if max_uses is not None:
+        print(f"  Usage cap: each source image used at most {max_uses} time(s)")
+    if diversity > 0:
+        print(f"  Diversity strength: {diversity} (radius {radius} tiles)")
+
     collage = render_collage(
         target_image=target_image,
         palette=palette,
         tile_size=tile_size,
-        method="euclidean"  # Can also use "delta_e" for perceptual matching
+        method="euclidean",
+        max_uses_per_image=max_uses,
+        diversity_strength=diversity,
+        neighbor_radius=radius,
     )
     
     return collage

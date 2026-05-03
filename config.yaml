@@ -16,6 +16,13 @@ collage:
   grid_segments_x: 15  # Number of columns
   grid_segments_y: 20  # Number of rows
   output_directory: "output/collages"
+  # Max times any single source image can be reused. Set to null for no limit.
+  max_uses_per_image: 3
+  # Spatial repulsion strength. Penalises placing the same image in nearby tiles.
+  # 0 = pure colour matching, ~30-80 = balanced, higher = more spread.
+  diversity_strength: 50
+  # Radius (in tiles) to look for neighbours when computing the repulsion penalty.
+  neighbor_radius: 3
 
 # Performance
 performance:

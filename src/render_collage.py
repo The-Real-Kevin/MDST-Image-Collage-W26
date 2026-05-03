@@ -12,39 +12,80 @@ from src.categorize_images import SourceImage, SourceImagePalette, categorize_al
 def render_collage(target_image: Image.Image,
                    palette: SourceImagePalette,
                    tile_size: int = 40,
-                   method: str = "euclidean") -> Image.Image:
-
+                   method: str = "euclidean",
+                   max_uses_per_image: int = None,
+                   diversity_strength: float = 0.0,
+                   neighbor_radius: int = 3) -> Image.Image:
+    """
+    diversity_strength: penalty added per neighbor tile that already uses the same
+    source image, scaled by 1/manhattan_distance. Set to 0 to disable.
+    neighbor_radius: how many tiles away to look when computing the penalty.
+    """
     if len(palette) == 0:
         raise ValueError("Palette is empty")
 
     width, height = target_image.size
 
     # Crop to clean tile grid
-    width = (width // tile_size) * tile_size
-    height = (height // tile_size) * tile_size
+    num_cols = width // tile_size
+    num_rows = height // tile_size
+    width = num_cols * tile_size
+    height = num_rows * tile_size
     target_image = target_image.crop((0, 0, width, height))
 
     mosaic = Image.new("RGB", (width, height))
 
-    for y in range(0, height, tile_size):
-        for x in range(0, width, tile_size):
+    colors = palette.get_color_array().astype(np.float32)
+    usage_counts = np.zeros(len(palette.images), dtype=np.int32)
+    # Tracks which palette index was placed at each (row, col); -1 = not yet placed
+    placed = np.full((num_rows, num_cols), -1, dtype=np.int32)
+
+    for row in range(num_rows):
+        for col in range(num_cols):
+            x = col * tile_size
+            y = row * tile_size
 
             tile = target_image.crop((x, y, x + tile_size, y + tile_size))
-            avg_color = tuple(np.array(tile).mean(axis=(0,1)).astype(int))
+            target_color = np.array(tile).mean(axis=(0, 1)).astype(np.float32)
 
-            # Use your existing matching function
-            best_match = palette.find_closest_match(avg_color)
+            distances = np.linalg.norm(colors - target_color, axis=1)
 
-            # Load image from filepath
+            # Spatial repulsion: penalise images already placed in nearby tiles
+            if diversity_strength > 0:
+                penalty = np.zeros(len(palette.images), dtype=np.float32)
+                r_lo = max(0, row - neighbor_radius)
+                r_hi = min(num_rows, row + neighbor_radius + 1)
+                c_lo = max(0, col - neighbor_radius)
+                c_hi = min(num_cols, col + neighbor_radius + 1)
+                for nr in range(r_lo, r_hi):
+                    for nc in range(c_lo, c_hi):
+                        idx = placed[nr, nc]
+                        if idx >= 0:
+                            manhattan = abs(nr - row) + abs(nc - col)
+                            penalty[idx] += diversity_strength / manhattan
+                distances = distances + penalty
+
+            if max_uses_per_image is not None:
+                available = usage_counts < max_uses_per_image
+                if available.any():
+                    distances = np.where(available, distances, np.inf)
+
+            best_idx = int(np.argmin(distances))
+            placed[row, col] = best_idx
+            best_match = palette.images[best_idx]
+            usage_counts[best_idx] += 1
+
             source_img = Image.open(best_match.filepath).convert("RGB")
-
-            # Resize to tile
             source_img = source_img.resize(
                 (tile_size, tile_size),
                 Image.Resampling.LANCZOS
             )
 
             mosaic.paste(source_img, (x, y))
+
+    used_count = int((usage_counts > 0).sum())
+    print(f"  Source images used: {used_count}/{len(palette.images)}")
+    print(f"  Max uses by any single image: {int(usage_counts.max())}")
 
     return mosaic
 

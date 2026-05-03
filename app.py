@@ -36,6 +36,7 @@ for key, default in [
     ("collage", None),
     ("target_image", None),
     ("processing_time", None),
+    ("usage_stats", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -103,14 +104,18 @@ def render_collage(
     num_cols: int,
     num_rows: int,
     progress_bar,
-) -> Image.Image:
+    max_uses_per_image: int = None,
+    diversity_strength: float = 0.0,
+    neighbor_radius: int = 3,
+) -> tuple:
     """
     Render the photomosaic.
 
-    Divides *target* into a num_cols × num_rows grid, finds the closest
-    source image for each tile by average RGB colour, and assembles the
-    final mosaic.  Tile dimensions are computed from the image size so
-    the output is the same resolution as the (cropped) target.
+    Returns (mosaic, usage_stats) where usage_stats is a dict with
+    'unique_used' and 'max_uses' keys.
+
+    diversity_strength: penalty added per neighbour tile that already uses the
+    same source image, scaled by 1/manhattan_distance. 0 = disabled.
     """
     width, height = target.size
 
@@ -132,17 +137,45 @@ def render_collage(
     total_tiles = num_cols * num_rows
     done = 0
 
+    colors = palette.get_color_array().astype(np.float32)
+    usage_counts = np.zeros(len(palette.images), dtype=np.int32)
+    placed = np.full((num_rows, num_cols), -1, dtype=np.int32)
+
     for row in range(num_rows):
         for col in range(num_cols):
             x = col * tile_w
             y = row * tile_h
 
             tile = target.crop((x, y, x + tile_w, y + tile_h))
-            avg_color = tuple(np.array(tile).mean(axis=(0, 1)).astype(int))
+            target_color = np.array(tile).mean(axis=(0, 1)).astype(np.float32)
 
-            best = palette.find_closest_match(avg_color)
+            distances = np.linalg.norm(colors - target_color, axis=1)
 
-            # Load source image from its saved filepath
+            # Spatial repulsion: penalise images already placed in nearby tiles
+            if diversity_strength > 0:
+                penalty = np.zeros(len(palette.images), dtype=np.float32)
+                r_lo = max(0, row - neighbor_radius)
+                r_hi = min(num_rows, row + neighbor_radius + 1)
+                c_lo = max(0, col - neighbor_radius)
+                c_hi = min(num_cols, col + neighbor_radius + 1)
+                for nr in range(r_lo, r_hi):
+                    for nc in range(c_lo, c_hi):
+                        idx = placed[nr, nc]
+                        if idx >= 0:
+                            manhattan = abs(nr - row) + abs(nc - col)
+                            penalty[idx] += diversity_strength / manhattan
+                distances = distances + penalty
+
+            if max_uses_per_image is not None:
+                available = usage_counts < max_uses_per_image
+                if available.any():
+                    distances = np.where(available, distances, np.inf)
+
+            best_idx = int(np.argmin(distances))
+            placed[row, col] = best_idx
+            usage_counts[best_idx] += 1
+            best = palette.images[best_idx]
+
             src = Image.open(best.filepath).convert("RGB")
             src = src.resize((tile_w, tile_h), Image.Resampling.LANCZOS)
             mosaic.paste(src, (x, y))
@@ -150,7 +183,11 @@ def render_collage(
             done += 1
             progress_bar.progress(done / total_tiles)
 
-    return mosaic
+    usage_stats = {
+        "unique_used": int((usage_counts > 0).sum()),
+        "max_uses": int(usage_counts.max()),
+    }
+    return mosaic, usage_stats
 
 
 def pil_to_bytes(image: Image.Image, fmt: str = "PNG") -> bytes:
@@ -209,6 +246,46 @@ with st.sidebar:
             help=(
                 "**Euclidean** computes distance in RGB space — fast and usually good.\n\n"
                 "**Delta E** uses perceptual CIE LAB space — slower but more accurate."
+            ),
+        )
+
+        max_uses_input = st.number_input(
+            "Max reuses per image",
+            min_value=0,
+            max_value=500,
+            value=3,
+            step=1,
+            help=(
+                "Maximum number of times a single source image can appear in the collage. "
+                "Set to **0** for no limit. "
+                "Lower values force more variety but may degrade colour accuracy."
+            ),
+        )
+        max_uses_per_image = int(max_uses_input) if max_uses_input > 0 else None
+
+        diversity_strength = st.slider(
+            "Diversity / spatial spread",
+            min_value=0,
+            max_value=150,
+            value=50,
+            step=5,
+            help=(
+                "Adds a penalty when the same source image appears in nearby tiles, "
+                "pushing the collage to spread images more evenly across the canvas. "
+                "**0** = pure colour accuracy. **50** = balanced. **150** = maximum spread "
+                "(colour match quality will degrade)."
+            ),
+        )
+
+        neighbor_radius = st.slider(
+            "Neighbour radius",
+            min_value=1,
+            max_value=8,
+            value=3,
+            step=1,
+            help=(
+                "How many tiles away to look when computing the spatial penalty. "
+                "Larger radius prevents the same image appearing in a wider area."
             ),
         )
 
@@ -306,20 +383,34 @@ if generate_clicked and ready:
         progress_bar = st.progress(0)
 
         target_pil = st.session_state.target_image
-        collage = render_collage(target_pil, palette, grid_cols, grid_rows, progress_bar)
+        if target_pil is None:
+            st.error("❌ Target image not found in session. Please re-upload the target image and try again.")
+            st.stop()
+
+        collage, usage_stats = render_collage(
+            target_pil, palette, grid_cols, grid_rows, progress_bar,
+            max_uses_per_image=max_uses_per_image,
+            diversity_strength=float(diversity_strength),
+            neighbor_radius=neighbor_radius,
+        )
 
         elapsed = time.time() - start_time
         st.session_state.collage = collage
         st.session_state.processing_time = elapsed
+        st.session_state.usage_stats = usage_stats
 
         progress_bar.empty()
         status.success(f"✅ Collage generated in {elapsed:.1f}s!")
 
     except ValueError as e:
         st.error(f"❌ Configuration error: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         st.stop()
     except Exception as e:
         st.error(f"❌ Unexpected error during generation: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         st.stop()
 
 # ---------------------------------------------------------------------------
@@ -330,15 +421,21 @@ if st.session_state.collage is not None:
     st.subheader("🖼️ Result")
 
     # Stats row
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     palette = st.session_state.palette
     collage = st.session_state.collage
     target_pil = st.session_state.target_image
+    usage_stats = st.session_state.usage_stats
 
     c1.metric("Source images", len(palette) if palette else "—")
     c2.metric("Grid size", f"{grid_cols} × {grid_rows}")
     c3.metric("Output size", f"{collage.size[0]}×{collage.size[1]}px")
-    c4.metric("Processing time", f"{st.session_state.processing_time:.1f}s" if st.session_state.processing_time else "—")
+    c4.metric(
+        "Unique images used",
+        f"{usage_stats['unique_used']}/{len(palette)}" if usage_stats else "—",
+        help="How many distinct source images appeared in the collage.",
+    )
+    c5.metric("Processing time", f"{st.session_state.processing_time:.1f}s" if st.session_state.processing_time else "—")
 
     # Side-by-side comparison
     tab_collage, tab_compare, tab_original = st.tabs(["Collage", "Side-by-side comparison", "Original"])
